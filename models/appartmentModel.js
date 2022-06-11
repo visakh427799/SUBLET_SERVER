@@ -5,6 +5,7 @@ const appartmentSchema = new Schema({
  vendor_id:String,
  name:String,
  photo:String,
+ phone:Number,
  address:String,
  no_rooms:Number,
  city:String,
