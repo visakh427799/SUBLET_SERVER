@@ -3,6 +3,7 @@ var router = express.Router();
 const user = require("../models/userModel");
 const vendor =require("../models/vendorModel")
 const appartment=require("../models/appartmentModel")
+const rental = require("../models/rentalModel")
 const cart =require("../models/cartModel")
 const mongoose =require("mongoose")
 router.get("/", (req, res) => {
@@ -172,6 +173,7 @@ router.post('/vendor/add-appartment',(req,res)=>{
     price:ap.rate,
     google_map_url:ap.google_map_url,
     is_booked:false,
+    no_of_bookings:0,
 
    }
    appartment.create(obj).then((data)=>{
@@ -233,12 +235,65 @@ router.post('/vendor/getRentals',(req,res)=>{
        
   })
 })
+//get bookings
+router.post('/vendor/getBookings',(req,res)=>{
+  console.log(req.body.v_id);
+  rental.find({vendor_id:req.body.v_id}).then((r)=>{
+    console.log(r);
+    if(r){
+
+      res.json({success:true,bookings:r})
+    }
+    else{
+      res.json({success:false})
+    }
+
+  })
+
+})
 
 //view all apartment/guesthouse/auditorium
 router.get('/user/getallAppartments',(req,res)=>{
   appartment.find({}).then((data)=>{
     if(data){
-      res.json({success:true,data:data})
+
+       rental.find({}).then((r)=>{
+         r.map((i)=>{
+           data.map((j)=>{
+               if(i.appartment_id==j._id){
+                  let no_days_left=i.no_days_left
+                  if(no_days_left==0){
+                    appartment.findOneAndUpdate({_id:j._id},{is_booked:false},{useFindAndModify:false}).then((d1)=>{
+                      console.log(d1);
+                    });
+                  }
+                  else{
+                     let date_f=new Date(i.date_from);
+                     let diff=Math.round((new Date().getTime()-date_f.getTime())/(1000 * 3600 * 24))+1
+                     if(diff>=0){
+                    let date_t=new Date(i.date_to);
+                    let Difference_In_Time=date_t.getTime()-(new Date().getTime())
+                    let Difference_In_Days = Difference_In_Time / (1000 * 3600 * 24);
+                    let no_days_left=Math.round(Difference_In_Days)+1;
+                    rental.findOneAndUpdate({appartment_id:j._id},{no_days_left:no_days_left},{useFindAndModify:false});
+                     }
+                  }
+               }
+           })
+         })
+       })
+
+   appartment.find({is_booked:false}).then((d)=>{
+    if(d){
+      res.json({success:true,data:d})
+    }
+    else{
+      res.json({success:false})
+   }
+  })
+
+
+       
     }
     else{
       res.json({success:false})
@@ -274,6 +329,39 @@ router.post('/admin/cancel',(req,res)=>{
        
   })
 })
+//admin get all apppartments
+router.get('/admin/getAllapartments',(req,res)=>{
+  appartment.find({}).then((d)=>{
+
+    if(d){
+       res.json({success:true,data:d})
+    }
+    else{
+      res.json({success:false})
+      
+    }
+  }).catch((err)=>{
+      res.json({success:false})
+        
+  })
+})
+//admin get all renders
+router.get('/admin/getAllrentals',(req,res)=>{
+  rental.find({}).then((d)=>{
+
+    if(d){
+       res.json({success:true,data:d})
+    }
+    else{
+       res.json({success:false})
+      
+    }
+  }).catch((err)=>{
+      res.json({success:false})
+        
+  })
+})
+
 //serach by loaction 
 router.post('/user/searchByloc',(req,res)=>{
   console.log(req.body.input);
@@ -389,7 +477,101 @@ router.post('/user/removeFromCart',(req,res)=>{
 })
 //view apartment/guesthouse/auditorium
 //book apartment/guesthouse/auditorium
+router.post('/user/book-appartment',(req,res)=>{
+  
+  let ap=req.body.ap
+  let total_price=req.body.d*ap.price
+  let date_f = req.body.dateFrom
+  let date_t = req.body.dateTo;
+  let Difference_In_Time = new Date(date_t).getTime() - new Date(date_f).getTime();
+  
+  let Difference_In_Days = Difference_In_Time / (1000 * 3600 * 24);
+  let no_days_left=Math.round(Difference_In_Days)+1;
+  console.log(no_days_left);
+  
+  let obj={
+    user_id:req.body.user_id,
+    appartment_id:ap._id,
+    vendor_id:ap.vendor_id,
+    date_from:req.body.dateFrom,
+    date_to:req.body.dateTo,
+    payment_status:true,
+    total_price:total_price,
+    no_days:req.body.d,
+    no_days_left:no_days_left
+  }
+
+  
+  rental.create(obj).then((data)=>{
+    if(data){
+      let cart_id=mongoose.Types.ObjectId(req.body.cart_id)
+      console.log(req.body.user_id,cart_id);
+      cart.updateOne({user_id:req.body.user_id},{$pull:{items:{_id:cart_id}}}).then((data1)=>{
+    
+        if(data1.modifiedCount===1){
+         
+          appartment.updateOne({_id:ap._id},{$inc:{no_of_bookings:1},$set:{is_booked:true}}).then((result)=>{
+            console.log(result);
+            if(result.modifiedCount===1){
+              res.json({success:true})
+            }
+            else{
+              res.json({success:true})
+
+            }
+            
+          })
+         
+        }
+        else{
+          res.json({success:true})
+
+        }
+    
+      })
+     
+      //res.json({success:true})
+    }
+    else{
+      res.json({success:false})
+    }
+  }).catch((err)=>{
+   
+      res.json({success:false})
+   
+  })
+
+  
+})
 //view my rentals
+
+router.post('/user/my-rentals',(req,res)=>{
+  let arr=[]
+  rental.find({user_id:req.body.user_id}).then((d)=>{
+
+    if(d){
+
+      appartment.find({}).then((ap)=>{
+        ap.map((a)=>{
+          d.map((r)=>{
+
+            if(a._id==r.appartment_id){
+              console.log("inside");
+              let obj={a,r}
+              arr.push(obj)
+              
+            }
+          })
+        })
+      console.log(arr);
+
+        res.json({success:true,data:arr})
+      })
+     
+      
+    }
+  })
+})
 
 //*vendor routes*
 

@@ -13,8 +13,10 @@ const appartmentSchema = new Schema({
  street:String,
  price:Number,
  google_map_url:String,
- is_booked:Boolean
-
+ is_booked:Boolean,
+ no_of_bookings:Number,
+ 
+ 
 });
 const appartment = mongoose.model("appartment", appartmentSchema);
 module.exports = appartment;
